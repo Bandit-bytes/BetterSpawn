@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.bandit.betterspawn.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "PlayerSpawnFinderMixin"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

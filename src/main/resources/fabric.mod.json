@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "betterspawn",
+  "version": "${version}",
+  "name": "BetterSpawn",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/betterspawn/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      "net.bandit.betterspawn.client.BetterspawnClient"
+    ],
+    "main": [
+      "net.bandit.betterspawn.Betterspawn"
+    ]
+  },
+  "mixins": [
+    "betterspawn.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
