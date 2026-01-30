@@ -5,93 +5,127 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.entity.Relative;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.storage.ServerLevelData;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 
+import java.util.EnumSet;
+
 @EventBusSubscriber(modid = Betterspawn.MODID)
 public class BetterSpawnNeoForgeEvents {
+
     private static final String FIRST_JOIN_TAG = "betterspawn_first_join_done";
+
+    private static final int HORIZONTAL_RADIUS = 32;
+    private static final int VERTICAL_SCAN = 24;
+    private static final int SURFACE_VERTICAL_SCAN = 48;
 
     @SubscribeEvent
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
 
-        if (player.getRespawnPosition() != null) return;
-        if (player.getPersistentData().getBoolean(FIRST_JOIN_TAG)) return;
+        if (player.getPersistentData().getBoolean(FIRST_JOIN_TAG).orElse(false)) return;
 
-        MinecraftServer server = player.server;
+        ServerLevel level = (ServerLevel) player.level();
+        MinecraftServer server = level.getServer();
+
         server.execute(() -> {
-            if (player.getRespawnPosition() != null) return;
-            if (player.getPersistentData().getBoolean(FIRST_JOIN_TAG)) return;
+            if (player.getPersistentData().getBoolean(FIRST_JOIN_TAG).orElse(false)) return;
 
             forceSafeWorldSpawn(player);
             player.getPersistentData().putBoolean(FIRST_JOIN_TAG, true);
         });
     }
 
-    @SubscribeEvent
-    public static void onRespawn(PlayerEvent.PlayerRespawnEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) return;
-
-        if (player.getRespawnPosition() != null) return;
-
-        MinecraftServer server = player.server;
-        server.execute(() -> {
-            if (player.getRespawnPosition() != null) return;
-            forceSafeWorldSpawn(player);
-        });
-    }
-
     private static void forceSafeWorldSpawn(ServerPlayer player) {
-        ServerLevel level = player.serverLevel();
+        ServerLevel level = (ServerLevel) player.level();
 
-        BlockPos raw = level.getSharedSpawnPos();
-        float yaw = level.getSharedSpawnAngle();
+        var data = (ServerLevelData) level.getLevelData();
+        var spawn = data.getRespawnData();
 
-        BlockPos best = findNonTreeGroundNear(level, raw, 32);
+        BlockPos raw = spawn.pos();
+        float yaw = spawn.yaw();
+
+        BlockPos best = findSafeSpawnNear(level, raw, HORIZONTAL_RADIUS, VERTICAL_SCAN);
         Vec3 dest = Vec3.atBottomCenterOf(best);
 
-        player.teleportTo(level, dest.x, dest.y, dest.z, yaw, player.getXRot());
+        player.teleportTo(
+                level,
+                dest.x, dest.y, dest.z,
+                EnumSet.noneOf(Relative.class),
+                yaw,
+                player.getXRot(),
+                false
+        );
+
         player.setDeltaMovement(0, 0, 0);
         player.hurtMarked = true;
     }
 
-    private static BlockPos findNonTreeGroundNear(ServerLevel level, BlockPos center, int radius) {
+    private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
         int cx = center.getX();
         int cz = center.getZ();
 
+        // Bias above the stored Y so setting spawn "on the floor block" feels right
+        int cy = center.getY() + 1;
+
+        // 1) Try exact X/Z near the configured Y first
+        BlockPos direct = findSafeAtXZ(level, cx, cz, cy, verticalScan);
+        if (direct != null) return direct;
+
+        // 2) Spiral around X/Z scanning around configured Y
         for (int r = 0; r <= radius; r++) {
             for (int dx = -r; dx <= r; dx++) {
                 int x1 = cx + dx;
 
-                BlockPos p1 = candidate(level, x1, cz + r);
+                BlockPos p1 = findSafeAtXZ(level, x1, cz + r, cy, verticalScan);
                 if (p1 != null) return p1;
 
-                BlockPos p2 = candidate(level, x1, cz - r);
+                BlockPos p2 = findSafeAtXZ(level, x1, cz - r, cy, verticalScan);
                 if (p2 != null) return p2;
             }
             for (int dz = -r + 1; dz <= r - 1; dz++) {
                 int z1 = cz + dz;
 
-                BlockPos p1 = candidate(level, cx + r, z1);
+                BlockPos p1 = findSafeAtXZ(level, cx + r, z1, cy, verticalScan);
                 if (p1 != null) return p1;
 
-                BlockPos p2 = candidate(level, cx - r, z1);
+                BlockPos p2 = findSafeAtXZ(level, cx - r, z1, cy, verticalScan);
                 if (p2 != null) return p2;
             }
         }
 
-        int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz);
-        return new BlockPos(cx, y, cz);
+        // 3) Fallback: surface at spawn X/Z (still tree-safe due to candidateAt)
+        int surfaceY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz);
+        BlockPos surface = findSafeAtXZ(level, cx, cz, surfaceY, SURFACE_VERTICAL_SCAN);
+        if (surface != null) return surface;
+
+        return new BlockPos(cx, surfaceY, cz);
     }
 
-    private static BlockPos candidate(ServerLevel level, int x, int z) {
-        int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+    private static BlockPos findSafeAtXZ(ServerLevel level, int x, int z, int startY, int verticalScan) {
+        for (int d = 0; d <= verticalScan; d++) {
+            BlockPos up = candidateAt(level, x, startY + d, z);
+            if (up != null) return up;
+
+            if (d != 0) {
+                BlockPos down = candidateAt(level, x, startY - d, z);
+                if (down != null) return down;
+            }
+        }
+        return null;
+    }
+
+    private static BlockPos candidateAt(ServerLevel level, int x, int y, int z) {
+        if (y <= level.getMinY() + 1) return null;
+        if (y >= level.getMaxY() - 2) return null;
+
         BlockPos pos = new BlockPos(x, y, z);
 
         if (!level.getBlockState(pos).isAir()) return null;
@@ -99,6 +133,7 @@ public class BetterSpawnNeoForgeEvents {
 
         BlockPos belowPos = pos.below();
         BlockState below = level.getBlockState(belowPos);
+
         if (below.is(BlockTags.LEAVES)) return null;
         if (below.is(BlockTags.LOGS)) return null;
 
