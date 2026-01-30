@@ -72,14 +72,12 @@ public class BetterSpawnNeoForgeEvents {
         int cx = center.getX();
         int cz = center.getZ();
 
-        // Bias above the stored Y so setting spawn "on the floor block" feels right
+
         int cy = center.getY() + 1;
 
-        // 1) Try exact X/Z near the configured Y first
         BlockPos direct = findSafeAtXZ(level, cx, cz, cy, verticalScan);
         if (direct != null) return direct;
 
-        // 2) Spiral around X/Z scanning around configured Y
         for (int r = 0; r <= radius; r++) {
             for (int dx = -r; dx <= r; dx++) {
                 int x1 = cx + dx;
@@ -101,7 +99,6 @@ public class BetterSpawnNeoForgeEvents {
             }
         }
 
-        // 3) Fallback: surface at spawn X/Z (still tree-safe due to candidateAt)
         int surfaceY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz);
         BlockPos surface = findSafeAtXZ(level, cx, cz, surfaceY, SURFACE_VERTICAL_SCAN);
         if (surface != null) return surface;
