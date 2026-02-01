@@ -8,8 +8,12 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.players.PlayerList;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.attribute.BedRule;
+import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.entity.Relative;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.RespawnAnchorBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.storage.ServerLevelData;
@@ -36,10 +40,17 @@ public class PlayerListSpawnMixin {
             at = @At("TAIL")
     )
     private void betterspawn$forceWorldSpawnOnFirstJoin(Connection connection, ServerPlayer player, CommonListenerCookie cookie, CallbackInfo ci) {
-        if (player.getRespawnConfig() != null) return;
 
         ServerLevel level = (ServerLevel) player.level();
         ServerLevelData data = (ServerLevelData) level.getLevelData();
+
+        var worldGlobal = data.getRespawnData().globalPos();
+        ServerPlayer.RespawnConfig cfg = player.getRespawnConfig();
+
+        if (cfg != null && hasValidPersonalRespawn(player, cfg)
+                && !cfg.respawnData().globalPos().equals(worldGlobal)) {
+            return;
+        }
 
         BlockPos raw = data.getRespawnData().pos();
         float yaw = data.getRespawnData().yaw();
@@ -60,6 +71,35 @@ public class PlayerListSpawnMixin {
             player.setDeltaMovement(0, 0, 0);
             player.hurtMarked = true;
         });
+    }
+    private static boolean hasValidPersonalRespawn(ServerPlayer player, ServerPlayer.RespawnConfig cfg) {
+        MinecraftServer srv = player.level().getServer();
+        if (srv == null) return false;
+
+        ServerLevel level = srv.getLevel(cfg.respawnData().dimension());
+        if (level == null) return false;
+
+        BlockPos pos = cfg.respawnData().pos();
+        BlockState state = level.getBlockState(pos);
+
+        if (state.getBlock() instanceof RespawnAnchorBlock) {
+            boolean forced = cfg.forced();
+            int charge = state.getValue(RespawnAnchorBlock.CHARGE);
+            return (forced || charge > 0) && RespawnAnchorBlock.canSetSpawn(level, pos);
+        }
+
+        if (state.getBlock() instanceof BedBlock) {
+            BedRule bedRule = level.environmentAttributes().getValue(EnvironmentAttributes.BED_RULE, pos);
+            return bedRule.canSetSpawn(level);
+        }
+
+        if (cfg.forced()) {
+            BlockState above = level.getBlockState(pos.above());
+            return state.getBlock().isPossibleToRespawnInThis(state)
+                    && above.getBlock().isPossibleToRespawnInThis(above);
+        }
+
+        return false;
     }
 
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
