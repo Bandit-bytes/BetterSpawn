@@ -1,5 +1,6 @@
 package net.bandit.betterspawn.mixin;
 
+import net.bandit.betterspawn.BetterSpawnFirstJoin;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
@@ -18,7 +19,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(PlayerList.class)
-public class PlayerListSpawnMixin {
+public class PlayerListFirstJoinSafeSpawnMixin {
 
     @Shadow private MinecraftServer server;
 
@@ -26,12 +27,17 @@ public class PlayerListSpawnMixin {
     private static final int VERTICAL_SCAN = 24;
     private static final int SURFACE_VERTICAL_SCAN = 48;
 
-    @Inject(
-            method = "placeNewPlayer(Lnet/minecraft/network/Connection;Lnet/minecraft/server/level/ServerPlayer;)V",
-            at = @At("TAIL")
-    )
-    private void betterspawn$forceWorldSpawnOnFirstJoin(Connection connection, ServerPlayer player, CallbackInfo ci) {
-        if (player.getRespawnPosition() != null) return;
+    @Inject(method = "placeNewPlayer", at = @At("TAIL"))
+    private void betterspawn$firstJoinSafeSpawn(Connection connection, ServerPlayer player, CallbackInfo ci) {
+        BetterSpawnFirstJoin firstJoin = (BetterSpawnFirstJoin) player;
+        if (firstJoin.betterspawn$firstJoinDone()) return;
+
+        if (player.getRespawnPosition() != null) {
+            firstJoin.betterspawn$setFirstJoinDone(true);
+            return;
+        }
+
+        firstJoin.betterspawn$setFirstJoinDone(true);
 
         ServerLevel level = player.serverLevel();
         BlockPos raw = level.getSharedSpawnPos();
@@ -51,7 +57,6 @@ public class PlayerListSpawnMixin {
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
         int cx = center.getX();
         int cz = center.getZ();
-
         int cy = center.getY() + 1;
 
         BlockPos direct = findSafeAtXZ(level, cx, cz, cy, verticalScan);
@@ -113,6 +118,7 @@ public class PlayerListSpawnMixin {
         if (below.isAir()) return null;
         if (below.is(Blocks.WATER) || below.is(Blocks.LAVA)) return null;
         if (below.getCollisionShape(level, belowPos).isEmpty()) return null;
+
         if (below.is(BlockTags.LEAVES)) return null;
         if (below.is(BlockTags.LOGS)) return null;
 
