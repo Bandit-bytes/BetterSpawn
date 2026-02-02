@@ -32,8 +32,6 @@ public class ServerPlayerFirstJoinSaveMixin implements BetterSpawnFirstJoin {
             this.betterspawn$firstJoinDone = old.betterspawn$firstJoinDone();
         }
     }
-
-    // Load from player NBT
     @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
     private void betterspawn$readFlag(CompoundTag tag, CallbackInfo ci) {
         if (tag.contains(BetterSpawnTags.ROOT, CompoundTag.TAG_COMPOUND)) {
@@ -44,7 +42,6 @@ public class ServerPlayerFirstJoinSaveMixin implements BetterSpawnFirstJoin {
         }
     }
 
-    // Save to player NBT
     @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
     private void betterspawn$writeFlag(CompoundTag tag, CallbackInfo ci) {
         CompoundTag root = tag.getCompound(BetterSpawnTags.ROOT);
