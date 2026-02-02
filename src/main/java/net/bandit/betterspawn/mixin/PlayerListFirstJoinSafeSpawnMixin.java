@@ -1,19 +1,17 @@
 package net.bandit.betterspawn.mixin;
 
+import net.bandit.betterspawn.BetterSpawnFirstJoin;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.PlayerSpawnFinder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.players.PlayerList;
 import net.minecraft.tags.BlockTags;
-import net.minecraft.world.attribute.BedRule;
-import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.entity.Relative;
-import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.RespawnAnchorBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.storage.ServerLevelData;
@@ -27,7 +25,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.EnumSet;
 
 @Mixin(PlayerList.class)
-public class PlayerListSpawnMixin {
+public class PlayerListFirstJoinSafeSpawnMixin {
 
     @Shadow private MinecraftServer server;
 
@@ -39,77 +37,108 @@ public class PlayerListSpawnMixin {
             method = "placeNewPlayer(Lnet/minecraft/network/Connection;Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/server/network/CommonListenerCookie;)V",
             at = @At("TAIL")
     )
-    private void betterspawn$forceWorldSpawnOnFirstJoin(Connection connection, ServerPlayer player, CommonListenerCookie cookie, CallbackInfo ci) {
+    private void betterspawn$place(Connection connection, ServerPlayer player, CommonListenerCookie cookie, CallbackInfo ci) {
+        BetterSpawnFirstJoin ext = (BetterSpawnFirstJoin) player;
+        if (!ext.betterspawn$firstJoinDone()) {
+            ext.betterspawn$setFirstJoinDone(true);
 
+            ServerLevel level = (ServerLevel) player.level();
+            ServerLevelData data = (ServerLevelData) level.getLevelData();
+
+            BlockPos raw = data.getRespawnData().pos();
+            float yaw = data.getRespawnData().yaw();
+
+            this.server.execute(() -> {
+                BlockPos best = findSafeSpawnNear(level, raw, HORIZONTAL_RADIUS, VERTICAL_SCAN);
+                Vec3 dest = Vec3.atBottomCenterOf(best);
+
+                player.teleportTo(
+                        level,
+                        dest.x, dest.y, dest.z,
+                        EnumSet.noneOf(Relative.class),
+                        yaw,
+                        player.getXRot(),
+                        false
+                );
+
+                player.setDeltaMovement(0, 0, 0);
+                player.hurtMarked = true;
+            });
+
+            return;
+        }
+        if (player.getHealth() > 0.0F) return;
+
+        ServerPlayer.RespawnConfig cfg = player.getRespawnConfig();
+
+        this.server.execute(() -> {
+            player.setHealth(player.getMaxHealth());
+            player.setDeltaMovement(0, 0, 0);
+            player.hurtMarked = true;
+
+            if (cfg != null) {
+                ServerLevel target = this.server.getLevel(cfg.respawnData().dimension());
+                if (target != null) {
+                    BlockPos respawnPos = cfg.respawnData().pos();
+                    float yaw = cfg.respawnData().yaw();
+
+                    PlayerSpawnFinder.findSpawn(target, respawnPos).thenAccept(vec -> {
+                        if (vec != null) {
+                            player.teleportTo(
+                                    target,
+                                    vec.x, vec.y, vec.z,
+                                    EnumSet.noneOf(Relative.class),
+                                    yaw,
+                                    player.getXRot(),
+                                    false
+                            );
+                            player.setDeltaMovement(0, 0, 0);
+                            player.hurtMarked = true;
+                            return;
+                        }
+
+                        fallbackWorldSpawn(player);
+                    });
+
+                    return;
+                }
+            }
+
+            fallbackWorldSpawn(player);
+        });
+    }
+
+    private void fallbackWorldSpawn(ServerPlayer player) {
         ServerLevel level = (ServerLevel) player.level();
         ServerLevelData data = (ServerLevelData) level.getLevelData();
 
-        var worldGlobal = data.getRespawnData().globalPos();
-        ServerPlayer.RespawnConfig cfg = player.getRespawnConfig();
-
-        if (cfg != null && hasValidPersonalRespawn(player, cfg)
-                && !cfg.respawnData().globalPos().equals(worldGlobal)) {
-            return;
-        }
-
-        BlockPos raw = data.getRespawnData().pos();
+        BlockPos worldSpawn = data.getRespawnData().pos();
         float yaw = data.getRespawnData().yaw();
 
-        this.server.execute(() -> {
-            BlockPos best = findSafeSpawnNear(level, raw, HORIZONTAL_RADIUS, VERTICAL_SCAN);
-            Vec3 dest = Vec3.atBottomCenterOf(best);
+        BlockPos best = findSafeSpawnNear(level, worldSpawn, HORIZONTAL_RADIUS, VERTICAL_SCAN);
+        Vec3 dest = Vec3.atBottomCenterOf(best);
 
-            player.teleportTo(
-                    level,
-                    dest.x, dest.y, dest.z,
-                    EnumSet.noneOf(Relative.class),
-                    yaw,
-                    player.getXRot(),
-                    false
-            );
+        player.teleportTo(
+                level,
+                dest.x, dest.y, dest.z,
+                EnumSet.noneOf(Relative.class),
+                yaw,
+                player.getXRot(),
+                false
+        );
 
-            player.setDeltaMovement(0, 0, 0);
-            player.hurtMarked = true;
-        });
-    }
-    private static boolean hasValidPersonalRespawn(ServerPlayer player, ServerPlayer.RespawnConfig cfg) {
-        MinecraftServer srv = player.level().getServer();
-        if (srv == null) return false;
-
-        ServerLevel level = srv.getLevel(cfg.respawnData().dimension());
-        if (level == null) return false;
-
-        BlockPos pos = cfg.respawnData().pos();
-        BlockState state = level.getBlockState(pos);
-
-        if (state.getBlock() instanceof RespawnAnchorBlock) {
-            boolean forced = cfg.forced();
-            int charge = state.getValue(RespawnAnchorBlock.CHARGE);
-            return (forced || charge > 0) && RespawnAnchorBlock.canSetSpawn(level, pos);
-        }
-
-        if (state.getBlock() instanceof BedBlock) {
-            BedRule bedRule = level.environmentAttributes().getValue(EnvironmentAttributes.BED_RULE, pos);
-            return bedRule.canSetSpawn(level);
-        }
-
-        if (cfg.forced()) {
-            BlockState above = level.getBlockState(pos.above());
-            return state.getBlock().isPossibleToRespawnInThis(state)
-                    && above.getBlock().isPossibleToRespawnInThis(above);
-        }
-
-        return false;
+        player.setDeltaMovement(0, 0, 0);
+        player.hurtMarked = true;
     }
 
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
         int cx = center.getX();
         int cz = center.getZ();
-
         int cy = center.getY() + 1;
 
         BlockPos direct = findSafeAtXZ(level, cx, cz, cy, verticalScan);
         if (direct != null) return direct;
+
         for (int r = 0; r <= radius; r++) {
             for (int dx = -r; dx <= r; dx++) {
                 int x1 = cx + dx;
