@@ -1,6 +1,7 @@
 package net.bandit.betterspawn;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -20,8 +21,6 @@ import java.util.EnumSet;
 @EventBusSubscriber(modid = Betterspawn.MODID)
 public class BetterSpawnNeoForgeEvents {
 
-    private static final String FIRST_JOIN_TAG = "betterspawn_first_join_done";
-
     private static final int HORIZONTAL_RADIUS = 32;
     private static final int VERTICAL_SCAN = 24;
     private static final int SURFACE_VERTICAL_SCAN = 48;
@@ -30,17 +29,29 @@ public class BetterSpawnNeoForgeEvents {
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
 
-        if (player.getPersistentData().getBoolean(FIRST_JOIN_TAG).orElse(false)) return;
+        BetterSpawnFirstJoin firstJoin = (BetterSpawnFirstJoin) player;
+        if (firstJoin.betterspawn$firstJoinDone()) return;
+
+        if (hasPlayerRespawnSet(player)) {
+            firstJoin.betterspawn$setFirstJoinDone(true);
+            return;
+        }
 
         ServerLevel level = (ServerLevel) player.level();
         MinecraftServer server = level.getServer();
 
         server.execute(() -> {
-            if (player.getPersistentData().getBoolean(FIRST_JOIN_TAG).orElse(false)) return;
+            if (!player.isAlive() || player.hasDisconnected()) return;
+            if (firstJoin.betterspawn$firstJoinDone()) return;
 
             forceSafeWorldSpawn(player);
-            player.getPersistentData().putBoolean(FIRST_JOIN_TAG, true);
+            firstJoin.betterspawn$setFirstJoinDone(true);
         });
+    }
+
+    private static boolean hasPlayerRespawnSet(ServerPlayer player) {
+        CompoundTag tag = player.getPersistentData();
+        return tag.contains("SpawnX") && tag.contains("SpawnY") && tag.contains("SpawnZ");
     }
 
     private static void forceSafeWorldSpawn(ServerPlayer player) {
@@ -71,8 +82,6 @@ public class BetterSpawnNeoForgeEvents {
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
         int cx = center.getX();
         int cz = center.getZ();
-
-
         int cy = center.getY() + 1;
 
         BlockPos direct = findSafeAtXZ(level, cx, cz, cy, verticalScan);
