@@ -1,5 +1,6 @@
 package net.bandit.betterspawn.mixin;
 
+import net.bandit.betterspawn.BetterSpawnFirstJoin;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
@@ -32,7 +33,9 @@ public class PlayerListSpawnMixin {
             at = @At("TAIL")
     )
     private void betterspawn$forceWorldSpawnOnFirstJoin(Connection connection, ServerPlayer player, CommonListenerCookie cookie, CallbackInfo ci) {
-        if (player.getRespawnPosition() != null) return;
+        BetterSpawnFirstJoin firstJoin = (BetterSpawnFirstJoin) player;
+        if (firstJoin.betterspawn$firstJoinDone()) return;
+        firstJoin.betterspawn$setFirstJoinDone(true);
 
         ServerLevel level = player.serverLevel();
         BlockPos raw = level.getSharedSpawnPos();
