@@ -16,8 +16,11 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.storage.ServerLevelData;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.stats.Stats;
+import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -40,8 +43,15 @@ public class PlayerListFirstJoinSafeSpawnMixin {
     private void betterspawn$place(Connection connection, ServerPlayer player, CommonListenerCookie cookie, CallbackInfo ci) {
         BetterSpawnFirstJoin ext = (BetterSpawnFirstJoin) player;
         if (!ext.betterspawn$firstJoinDone()) {
+            if (isExistingPlayer(player)) {
+                ext.betterspawn$setFirstJoinDone(true);
+                return;
+            }
+            if (player.getRespawnConfig() != null) {
+                ext.betterspawn$setFirstJoinDone(true);
+                return;
+            }
             ext.betterspawn$setFirstJoinDone(true);
-
             ServerLevel level = (ServerLevel) player.level();
             ServerLevelData data = (ServerLevelData) level.getLevelData();
 
@@ -67,6 +77,7 @@ public class PlayerListFirstJoinSafeSpawnMixin {
 
             return;
         }
+
         if (player.getHealth() > 0.0F) return;
 
         ServerPlayer.RespawnConfig cfg = player.getRespawnConfig();
@@ -107,7 +118,12 @@ public class PlayerListFirstJoinSafeSpawnMixin {
             fallbackWorldSpawn(player);
         });
     }
+    @Unique
+    private static boolean isExistingPlayer(ServerPlayer player) {
+        return player.getStats().getValue(Stats.CUSTOM.get(Stats.PLAY_TIME)) > 0;
+    }
 
+    @Unique
     private void fallbackWorldSpawn(ServerPlayer player) {
         ServerLevel level = (ServerLevel) player.level();
         ServerLevelData data = (ServerLevelData) level.getLevelData();
@@ -131,6 +147,7 @@ public class PlayerListFirstJoinSafeSpawnMixin {
         player.hurtMarked = true;
     }
 
+    @Unique
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
         int cx = center.getX();
         int cz = center.getZ();
@@ -180,6 +197,7 @@ public class PlayerListFirstJoinSafeSpawnMixin {
         return null;
     }
 
+    @Unique
     private static BlockPos candidateAt(ServerLevel level, int x, int y, int z) {
         if (y <= level.getMinY() + 1) return null;
         if (y >= level.getMaxY() - 2) return null;
