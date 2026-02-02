@@ -5,6 +5,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -27,11 +28,17 @@ public class BetterSpawnForgeEvents {
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
 
-        CompoundTag root = player.getPersistentData().getCompound(TAG_ROOT);
+        CompoundTag root = getModRoot(player);
         if (root.getBoolean(TAG_FIRST_JOIN_DONE)) return;
 
+        if (player.getRespawnPosition() != null) {
+            root.putBoolean(TAG_FIRST_JOIN_DONE, true);
+            saveModRoot(player, root);
+            return;
+        }
+
         root.putBoolean(TAG_FIRST_JOIN_DONE, true);
-        player.getPersistentData().put(TAG_ROOT, root);
+        saveModRoot(player, root);
 
         forceSafeWorldSpawn(player);
     }
@@ -130,5 +137,23 @@ public class BetterSpawnForgeEvents {
         if (below.getCollisionShape(level, belowPos).isEmpty()) return null;
 
         return pos;
+    }
+    private static CompoundTag getPersisted(ServerPlayer player) {
+        return player.getPersistentData().getCompound(Player.PERSISTED_NBT_TAG);
+    }
+
+    private static CompoundTag getModRoot(ServerPlayer player) {
+        CompoundTag persisted = getPersisted(player);
+        if (!persisted.contains(TAG_ROOT, CompoundTag.TAG_COMPOUND)) {
+            persisted.put(TAG_ROOT, new CompoundTag());
+            player.getPersistentData().put(Player.PERSISTED_NBT_TAG, persisted);
+        }
+        return persisted.getCompound(TAG_ROOT);
+    }
+
+    private static void saveModRoot(ServerPlayer player, CompoundTag root) {
+        CompoundTag persisted = getPersisted(player);
+        persisted.put(TAG_ROOT, root);
+        player.getPersistentData().put(Player.PERSISTED_NBT_TAG, persisted);
     }
 }
