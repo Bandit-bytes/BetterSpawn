@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.stats.Stats;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.Blocks;
@@ -30,6 +31,11 @@ public class BetterSpawnForgeEvents {
 
         CompoundTag root = getModRoot(player);
         if (root.getBoolean(TAG_FIRST_JOIN_DONE)) return;
+        if (isExistingPlayer(player)) {
+            root.putBoolean(TAG_FIRST_JOIN_DONE, true);
+            saveModRoot(player, root);
+            return;
+        }
 
         if (player.getRespawnPosition() != null) {
             root.putBoolean(TAG_FIRST_JOIN_DONE, true);
@@ -42,6 +48,7 @@ public class BetterSpawnForgeEvents {
 
         forceSafeWorldSpawn(player);
     }
+
 
     @SubscribeEvent
     public static void onRespawn(PlayerEvent.PlayerRespawnEvent event) {
@@ -116,6 +123,10 @@ public class BetterSpawnForgeEvents {
         }
         return null;
     }
+    private static boolean isExistingPlayer(ServerPlayer player) {
+        return player.getStats().getValue(Stats.CUSTOM.get(Stats.PLAY_TIME)) > 0;
+    }
+
 
     private static BlockPos candidateAt(ServerLevel level, int x, int y, int z) {
         if (y <= level.getMinBuildHeight() + 1) return null;

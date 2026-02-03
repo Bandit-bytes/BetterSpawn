@@ -1,7 +1,6 @@
 package net.bandit.betterspawn;
 
 import com.mojang.logging.LogUtils;
-import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
