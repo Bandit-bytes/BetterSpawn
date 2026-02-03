@@ -8,6 +8,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.players.PlayerList;
+import net.minecraft.stats.Stats;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -15,6 +16,7 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -33,8 +35,14 @@ public class PlayerListSpawnMixin {
             at = @At("TAIL")
     )
     private void betterspawn$forceWorldSpawnOnFirstJoin(Connection connection, ServerPlayer player, CommonListenerCookie cookie, CallbackInfo ci) {
+
         BetterSpawnFirstJoin firstJoin = (BetterSpawnFirstJoin) player;
+
         if (firstJoin.betterspawn$firstJoinDone()) return;
+        if (isExistingPlayer(player)) {
+            firstJoin.betterspawn$setFirstJoinDone(true);
+            return;
+        }
         firstJoin.betterspawn$setFirstJoinDone(true);
 
         ServerLevel level = player.serverLevel();
@@ -50,6 +58,10 @@ public class PlayerListSpawnMixin {
             player.setDeltaMovement(0, 0, 0);
             player.hurtMarked = true;
         });
+    }
+    @Unique
+    private static boolean isExistingPlayer(ServerPlayer player) {
+        return player.getStats().getValue(Stats.CUSTOM.get(Stats.PLAY_TIME)) > 0;
     }
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
         int cx = center.getX();
