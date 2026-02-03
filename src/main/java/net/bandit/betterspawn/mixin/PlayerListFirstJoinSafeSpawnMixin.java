@@ -2,6 +2,7 @@ package net.bandit.betterspawn.mixin;
 
 import net.bandit.betterspawn.BetterSpawnFirstJoin;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.Connection;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -14,44 +15,71 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(PlayerList.class)
-public class PlayerListFirstJoinSafeSpawnMixin {
+public abstract class PlayerListFirstJoinSafeSpawnMixin {
 
     @Shadow private MinecraftServer server;
+
+    @Shadow protected abstract CompoundTag load(ServerPlayer player);
 
     private static final int HORIZONTAL_RADIUS = 32;
     private static final int VERTICAL_SCAN = 24;
     private static final int SURFACE_VERTICAL_SCAN = 48;
 
+    @Unique private CompoundTag betterspawn$loadedTag;
+
+    @Redirect(
+            method = "placeNewPlayer",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Lnet/minecraft/server/players/PlayerList;load(Lnet/minecraft/server/level/ServerPlayer;)Lnet/minecraft/nbt/CompoundTag;"
+            )
+    )
+    private CompoundTag betterspawn$captureLoadResult(PlayerList instance, ServerPlayer player) {
+        CompoundTag tag = this.load(player);
+        this.betterspawn$loadedTag = tag;
+        return tag;
+    }
+
     @Inject(method = "placeNewPlayer", at = @At("TAIL"))
     private void betterspawn$firstJoinSafeSpawn(Connection connection, ServerPlayer player, CallbackInfo ci) {
-        BetterSpawnFirstJoin firstJoin = (BetterSpawnFirstJoin) player;
-        if (firstJoin.betterspawn$firstJoinDone()) return;
+        try {
+            BetterSpawnFirstJoin firstJoin = (BetterSpawnFirstJoin) player;
+            if (firstJoin.betterspawn$firstJoinDone()) return;
 
-        if (player.getRespawnPosition() != null) {
+            if (player.getRespawnPosition() != null) {
+                firstJoin.betterspawn$setFirstJoinDone(true);
+                return;
+            }
+
+            if (this.betterspawn$loadedTag != null) {
+                firstJoin.betterspawn$setFirstJoinDone(true);
+                return;
+            }
+
             firstJoin.betterspawn$setFirstJoinDone(true);
-            return;
+
+            ServerLevel level = player.serverLevel();
+            BlockPos raw = level.getSharedSpawnPos();
+            float yaw = level.getSharedSpawnAngle();
+
+            this.server.execute(() -> {
+                BlockPos best = findSafeSpawnNear(level, raw, HORIZONTAL_RADIUS, VERTICAL_SCAN);
+                Vec3 dest = Vec3.atBottomCenterOf(best);
+
+                player.teleportTo(level, dest.x, dest.y, dest.z, yaw, player.getXRot());
+                player.setDeltaMovement(0, 0, 0);
+                player.hurtMarked = true;
+            });
+        } finally {
+            this.betterspawn$loadedTag = null;
         }
-
-        firstJoin.betterspawn$setFirstJoinDone(true);
-
-        ServerLevel level = player.serverLevel();
-        BlockPos raw = level.getSharedSpawnPos();
-        float yaw = level.getSharedSpawnAngle();
-
-        this.server.execute(() -> {
-            BlockPos best = findSafeSpawnNear(level, raw, HORIZONTAL_RADIUS, VERTICAL_SCAN);
-            Vec3 dest = Vec3.atBottomCenterOf(best);
-
-            player.teleportTo(level, dest.x, dest.y, dest.z, yaw, player.getXRot());
-
-            player.setDeltaMovement(0, 0, 0);
-            player.hurtMarked = true;
-        });
     }
 
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
