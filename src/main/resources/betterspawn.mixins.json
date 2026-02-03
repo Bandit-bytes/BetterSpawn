@@ -4,6 +4,9 @@
   "package": "net.bandit.betterspawn.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "PlayerListSpawnMixin",
+    "ServerPlayerAdjustSpawnMixin",
+    "ServerPlayerFirstJoinSaveMixin"
   ],
   "client": [
   ],
