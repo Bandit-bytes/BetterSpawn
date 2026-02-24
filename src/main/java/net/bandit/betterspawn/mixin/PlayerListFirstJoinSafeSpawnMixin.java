@@ -1,8 +1,12 @@
 package net.bandit.betterspawn.mixin;
 
 import net.bandit.betterspawn.BetterSpawnFirstJoin;
+import net.bandit.betterspawn.BetterSpawnPendingRespawn;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.Connection;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.PlayerSpawnFinder;
 import net.minecraft.server.level.ServerLevel;
@@ -17,7 +21,6 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.storage.ServerLevelData;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.stats.Stats;
-import net.minecraft.world.level.Level;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -42,6 +45,7 @@ public class PlayerListFirstJoinSafeSpawnMixin {
     )
     private void betterspawn$place(Connection connection, ServerPlayer player, CommonListenerCookie cookie, CallbackInfo ci) {
         BetterSpawnFirstJoin ext = (BetterSpawnFirstJoin) player;
+
         if (!ext.betterspawn$firstJoinDone()) {
             if (isExistingPlayer(player)) {
                 ext.betterspawn$setFirstJoinDone(true);
@@ -52,6 +56,7 @@ public class PlayerListFirstJoinSafeSpawnMixin {
                 return;
             }
             ext.betterspawn$setFirstJoinDone(true);
+
             ServerLevel level = (ServerLevel) player.level();
             ServerLevelData data = (ServerLevelData) level.getLevelData();
 
@@ -80,9 +85,23 @@ public class PlayerListFirstJoinSafeSpawnMixin {
 
         if (player.getHealth() > 0.0F) return;
 
+        BetterSpawnPendingRespawn pending = (BetterSpawnPendingRespawn) player;
+        if (!pending.betterspawn$isPendingRespawn()) return;
+
         ServerPlayer.RespawnConfig cfg = player.getRespawnConfig();
 
         this.server.execute(() -> {
+            String msgText = pending.betterspawn$getLastDeathMessageText();
+            if (msgText != null && !msgText.isBlank()) {
+                player.sendSystemMessage(Component.literal(msgText));
+            }
+
+            try {
+                player.clearFire();
+                player.setRemainingFireTicks(0);
+            } catch (Throwable ignored) {}
+
+
             player.setHealth(player.getMaxHealth());
             player.setDeltaMovement(0, 0, 0);
             player.hurtMarked = true;
@@ -105,10 +124,13 @@ public class PlayerListFirstJoinSafeSpawnMixin {
                             );
                             player.setDeltaMovement(0, 0, 0);
                             player.hurtMarked = true;
+
+                            pending.betterspawn$clearPendingRespawn();
                             return;
                         }
 
                         fallbackWorldSpawn(player);
+                        pending.betterspawn$clearPendingRespawn();
                     });
 
                     return;
@@ -116,8 +138,10 @@ public class PlayerListFirstJoinSafeSpawnMixin {
             }
 
             fallbackWorldSpawn(player);
+            pending.betterspawn$clearPendingRespawn();
         });
     }
+
     @Unique
     private static boolean isExistingPlayer(ServerPlayer player) {
         return player.getStats().getValue(Stats.CUSTOM.get(Stats.PLAY_TIME)) > 0;
