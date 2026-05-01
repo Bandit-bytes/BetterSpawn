@@ -61,7 +61,6 @@ public class PlayerListDeathRespawnMixin {
         player.hurtMarked = true;
     }
 
-    // ---------- VALID BED / ANCHOR CHECK ----------
     @Unique
     private static boolean hasValidPersonalRespawn(ServerPlayer player, ServerPlayer.RespawnConfig cfg) {
         MinecraftServer srv = player.level().getServer();
@@ -93,7 +92,6 @@ public class PlayerListDeathRespawnMixin {
         return false;
     }
 
-    // ---------- SAME SAFE SPAWN LOGIC ----------
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center) {
         int cx = center.getX();
         int cz = center.getZ();
