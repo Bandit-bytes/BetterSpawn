@@ -1,0 +1,27 @@
+# BetterSpawn - NeoForge 26.2 Mod Metadata
+
+license="All Rights Reserved"
+
+[[mods]]
+modId="betterspawn"
+version="1.0.0-26.2-neo"
+displayName="BetterSpawn"
+authors="Bandit-Bytes"
+description='''Mod that fixes the /setworldspawn roof issues!'''
+
+[[mixins]]
+config="betterspawn.mixins.json"
+
+[[dependencies.betterspawn]]
+modId="neoforge"
+type="required"
+versionRange="[26.2.0.48-beta,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.betterspawn]]
+modId="minecraft"
+type="required"
+versionRange="[26.2]"
+ordering="NONE"
+side="BOTH"
