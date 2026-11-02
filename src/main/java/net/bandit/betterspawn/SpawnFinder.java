@@ -26,6 +26,9 @@ public final class SpawnFinder {
     }
 
     public static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
+        BlockPos exact = findExactSpawn(level, center);
+        if (exact != null) return exact;
+
         int cx = center.getX();
         int cz = center.getZ();
         int cy = center.getY();
@@ -59,6 +62,19 @@ public final class SpawnFinder {
         return new BlockPos(cx, surfaceY, cz);
     }
 
+    /**
+     * The configured spawn wins whenever a player can safely stand there. The roof and floor-material
+     * checks only rank candidates during the wider search, so they must not reject this position.
+     * The neighbours cover a spawn recorded inside a partial block such as a slab (above) or
+     * one block over the floor (below).
+     */
+    private static BlockPos findExactSpawn(ServerLevel level, BlockPos center) {
+        if (canStandAt(level, center)) return center;
+        if (canStandAt(level, center.above())) return center.above();
+        if (canStandAt(level, center.below())) return center.below();
+        return null;
+    }
+
     private static BlockPos findSafeAtXZ(ServerLevel level, int x, int z, int startY, int verticalScan, BlockPos[] roofFallback) {
         for (int d = 0; d <= verticalScan; d++) {
             BlockPos down = check(level, x, startY - d, z, roofFallback);
@@ -81,20 +97,26 @@ public final class SpawnFinder {
     }
 
     private static Result evaluate(ServerLevel level, BlockPos pos) {
-        int y = pos.getY();
-        if (y <= level.getMinBuildHeight() + 1) return Result.INVALID;
-        if (y >= level.getMaxBuildHeight() - 2) return Result.INVALID;
-
-        if (!isFeetPassable(level, pos)) return Result.INVALID;
-        if (!isHeadPassable(level, pos.above())) return Result.INVALID;
+        if (!canStandAt(level, pos)) return Result.INVALID;
 
         BlockPos floorPos = pos.below();
-        BlockState floor = level.getBlockState(floorPos);
-        if (!isGoodFloor(level, floorPos, floor)) return Result.INVALID;
+        if (isTreeFloor(level.getBlockState(floorPos))) return Result.INVALID;
 
         if (isStructureRoof(level, floorPos)) return Result.ROOF;
 
         return Result.OK;
+    }
+
+    private static boolean canStandAt(ServerLevel level, BlockPos pos) {
+        int y = pos.getY();
+        if (y <= level.getMinBuildHeight() + 1) return false;
+        if (y >= level.getMaxBuildHeight() - 2) return false;
+
+        if (!isFeetPassable(level, pos)) return false;
+        if (!isHeadPassable(level, pos.above())) return false;
+
+        BlockPos floorPos = pos.below();
+        return isSafeFloor(level, floorPos, level.getBlockState(floorPos));
     }
 
     private static boolean isFeetPassable(ServerLevel level, BlockPos pos) {
@@ -124,19 +146,23 @@ public final class SpawnFinder {
                 || state.is(Blocks.END_PORTAL);
     }
 
-    private static boolean isGoodFloor(ServerLevel level, BlockPos floorPos, BlockState floor) {
+    private static boolean isSafeFloor(ServerLevel level, BlockPos floorPos, BlockState floor) {
         if (floor.isAir()) return false;
         if (!floor.getFluidState().isEmpty()) return false;
         if (floor.getCollisionShape(level, floorPos).isEmpty()) return false;
-
-        if (floor.is(BlockTags.LEAVES)) return false;
-        if (floor.is(BlockTags.LOGS)) return false;
-        if (floor.is(Blocks.BROWN_MUSHROOM_BLOCK) || floor.is(Blocks.RED_MUSHROOM_BLOCK) || floor.is(Blocks.MUSHROOM_STEM)) return false;
 
         if (floor.is(Blocks.MAGMA_BLOCK) || floor.is(Blocks.CACTUS) || floor.is(BlockTags.CAMPFIRES)) return false;
         if (floor.is(Blocks.POWDER_SNOW)) return false;
 
         return true;
+    }
+
+    private static boolean isTreeFloor(BlockState floor) {
+        return floor.is(BlockTags.LEAVES)
+                || floor.is(BlockTags.LOGS)
+                || floor.is(Blocks.BROWN_MUSHROOM_BLOCK)
+                || floor.is(Blocks.RED_MUSHROOM_BLOCK)
+                || floor.is(Blocks.MUSHROOM_STEM);
     }
 
 
