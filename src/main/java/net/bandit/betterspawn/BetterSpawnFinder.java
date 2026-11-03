@@ -15,6 +15,9 @@ public final class BetterSpawnFinder {
     private static final int VERTICAL_SCAN = 24;
 
     public static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center) {
+        BlockPos exact = ExactSpawn.find(level, center);
+        if (exact != null) return exact;
+
         int cx = center.getX();
         int cz = center.getZ();
 
