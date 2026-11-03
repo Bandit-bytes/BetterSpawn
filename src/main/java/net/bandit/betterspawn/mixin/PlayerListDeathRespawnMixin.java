@@ -1,5 +1,6 @@
 package net.bandit.betterspawn.mixin;
 
+import net.bandit.betterspawn.ExactSpawn;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -93,6 +94,9 @@ public class PlayerListDeathRespawnMixin {
     }
 
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center) {
+        BlockPos exact = ExactSpawn.find(level, center);
+        if (exact != null) return exact;
+
         int cx = center.getX();
         int cz = center.getZ();
         int cy = center.getY();
