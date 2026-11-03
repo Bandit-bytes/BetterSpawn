@@ -2,6 +2,7 @@ package net.bandit.betterspawn.mixin;
 
 import net.bandit.betterspawn.BetterSpawnFirstJoin;
 import net.bandit.betterspawn.BetterSpawnPendingRespawn;
+import net.bandit.betterspawn.ExactSpawn;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.Connection;
@@ -173,6 +174,9 @@ public class PlayerListFirstJoinSafeSpawnMixin {
 
     @Unique
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
+        BlockPos exact = ExactSpawn.find(level, center);
+        if (exact != null) return exact;
+
         int cx = center.getX();
         int cz = center.getZ();
         int cy = center.getY() + 1;
