@@ -70,11 +70,15 @@ public class BetterSpawnForgeEvents {
 
             player.teleportTo(level, dest.x, dest.y, dest.z, yaw, player.getXRot());
             player.setDeltaMovement(0, 0, 0);
+            player.fallDistance = 0;
             player.hurtMarked = true;
         });
     }
 
     private static BlockPos findSafeSpawnNear(ServerLevel level, BlockPos center, int radius, int verticalScan) {
+        BlockPos exact = ExactSpawn.find(level, center);
+        if (exact != null) return exact;
+
         int cx = center.getX();
         int cz = center.getZ();
 
